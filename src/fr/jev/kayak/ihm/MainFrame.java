@@ -1,6 +1,8 @@
 package fr.jev.kayak.ihm;
 
 import java.awt.BorderLayout;
+import java.awt.event.WindowAdapter;
+import java.awt.event.WindowEvent;
 
 import javax.swing.JFrame;
 import javax.swing.JSplitPane;
@@ -23,9 +25,16 @@ public class MainFrame extends JFrame {
 	private MainFrame() {
 		this.setTitle("Video Analyse");
 		this.setSize(500, 500);
-		this.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+		this.setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE);
 		this.setLayout(new BorderLayout());
 		this.add(getSplitPane(), BorderLayout.CENTER);
+        this.addWindowListener(new WindowAdapter() {
+            @Override
+            public void windowClosing(WindowEvent e) {
+                getPanelVideo().close();
+                System.exit(0);
+            }
+        });
 	}
 	
 	public static MainFrame get() {
