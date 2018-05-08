@@ -3,9 +3,14 @@ package fr.jev.kayak.ihm;
 import java.awt.BorderLayout;
 import java.awt.Canvas;
 import java.awt.Color;
+import java.io.File;
 import java.util.Date;
 
 import javax.swing.JPanel;
+
+import org.freedesktop.gstreamer.Gst;
+import org.freedesktop.gstreamer.StateChangeReturn;
+import org.freedesktop.gstreamer.elements.PlayBin;
 
 import com.sun.jna.Native;
 import com.sun.jna.NativeLibrary;
@@ -26,12 +31,25 @@ public class PanelVideo extends JPanel {
 	 */
 	private static final long serialVersionUID = 6238373404940413630L;
 
+	/*
+	 * for vlc
+	 */
 	private EmbeddedMediaPlayer embeddedMediaPlayer;
 
 	private Canvas canvas;
 
 	private MediaPlayerFactory mediaPlayerFactory;
 
+	/*
+	 * for gstreamer
+	 */
+	private SimpleVideoComponent simpleVideoComponent;
+
+	private PlayBin playBin;
+
+	/*
+	 * common
+	 */
 	private boolean isPlay = false;
 
 	private long totalTime = 0l;
@@ -39,12 +57,22 @@ public class PanelVideo extends JPanel {
 	private Thread threadTime;
 
 	public PanelVideo() {
-		if(ConfigurationController.isWindows()) {
-			NativeLibrary.addSearchPath(RuntimeUtil.getLibVlcLibraryName(),"C:/Program Files (x86)/VideoLAN/VLC");
-		}
-		Native.loadLibrary(RuntimeUtil.getLibVlcLibraryName(),LibVlc.class);
 		this.setLayout(new BorderLayout());
-		this.add(getCanvas(), BorderLayout.CENTER);
+		if(ConfigurationController.isVlcLib()) {
+			if(ConfigurationController.isWindows()) {
+				NativeLibrary.addSearchPath(RuntimeUtil.getLibVlcLibraryName(),"C:/Program Files (x86)/VideoLAN/VLC");
+			}
+			Native.loadLibrary(RuntimeUtil.getLibVlcLibraryName(),LibVlc.class);
+			this.add(getCanvas(), BorderLayout.CENTER);
+		}else if(ConfigurationController.isGstreamerLib()) {
+			//getPlaybin to init gstreamer
+			getPlayBin();
+			this.add(getSimpleVideoComponent(), BorderLayout.CENTER);
+		}else {
+			System.err.println("[FATAL] no movie liv init.");
+			System.exit(1);
+		}
+
 	}
 
 	/**
@@ -95,13 +123,32 @@ public class PanelVideo extends JPanel {
 
 	public void playPause() {
 		if(!isPlay) {
-			getEmbeddedMediaPlayer().play();
-			isPlay = true;
-			startThreadTime();
+			if(ConfigurationController.isVlcLib()) {
+				getEmbeddedMediaPlayer().play();
+				isPlay = true;
+				startThreadTime();
+
+			}else if(ConfigurationController.isGstreamerLib()) {
+				StateChangeReturn rep = getPlayBin().play();
+				System.out.println(rep.toString());
+				isPlay = true;
+			}else {
+				System.err.println("[FATAL] no movie liv init.");
+				System.exit(1);
+			}
 		}else {
-			getEmbeddedMediaPlayer().pause();
-			isPlay = false;
-			stopThreadTime();
+			if(ConfigurationController.isVlcLib()) {
+				getEmbeddedMediaPlayer().pause();
+				isPlay = false;
+				stopThreadTime();
+			}else if(ConfigurationController.isGstreamerLib()) {
+				StateChangeReturn rep = getPlayBin().pause();
+				System.out.println(rep.toString());
+				isPlay = false;
+			}else {
+				System.err.println("[FATAL] no movie liv init.");
+				System.exit(1);
+			}
 		}
 	}
 
@@ -165,12 +212,30 @@ public class PanelVideo extends JPanel {
 	public void setTime(long time) {
 		this.getEmbeddedMediaPlayer().setTime(time);
 	}
-	
+
 	public void close() {
 		if(this.embeddedMediaPlayer!= null) {
 			pause();
 			this.embeddedMediaPlayer.release();
 		}
+	}
+
+	private SimpleVideoComponent getSimpleVideoComponent() {
+		if(simpleVideoComponent == null) {
+			simpleVideoComponent = new SimpleVideoComponent();
+		}
+		return simpleVideoComponent;
+	}
+
+	private PlayBin getPlayBin() {
+		if(playBin == null) {
+			Gst.init();
+			playBin = new PlayBin("playbin");
+			File file = new File(ConfigurationController.file);
+			playBin.setURI(file.toURI());
+			playBin.setVideoSink(getSimpleVideoComponent().getElement());
+		}
+		return playBin;
 	}
 
 }

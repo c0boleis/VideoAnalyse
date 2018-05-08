@@ -4,6 +4,8 @@ public class ConfigurationController {
 	
 	public static final String WINDOWS_OS = "windows";
 	
+	public static MovieLibEnum movieLib = MovieLibEnum.gstreamer;
+	
 	public static String file = null;
 	
 	public static boolean isWindows() {
@@ -17,6 +19,13 @@ public class ConfigurationController {
 			}
 		}
 		return false;
+	}
+	
+	public static boolean isVlcLib() {
+		return movieLib.equals(MovieLibEnum.vlc);
+	}
+	public static boolean isGstreamerLib() {
+		return movieLib.equals(MovieLibEnum.gstreamer);
 	}
 
 }
