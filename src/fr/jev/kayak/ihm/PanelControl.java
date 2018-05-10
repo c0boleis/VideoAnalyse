@@ -5,6 +5,7 @@ import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
 import java.awt.event.MouseEvent;
 import java.awt.event.MouseListener;
+import java.util.concurrent.TimeUnit;
 
 import javax.swing.JButton;
 import javax.swing.JLabel;
@@ -12,6 +13,10 @@ import javax.swing.JPanel;
 import javax.swing.JSlider;
 import javax.swing.event.ChangeEvent;
 import javax.swing.event.ChangeListener;
+
+import org.freedesktop.gstreamer.elements.PlayBin;
+
+import sun.applet.Main;
 
 public class PanelControl extends JPanel{
 
@@ -25,12 +30,18 @@ public class PanelControl extends JPanel{
 	private JLabel labelTime;
 	
 	private JSlider sliderTime;
+	
+	private JButton buttonIncr;
+	
+	private JButton buttonDec;
 
 	public PanelControl() {
 		this.setLayout(new BorderLayout());
 		this.add(getButtonPlay(), BorderLayout.CENTER);
 
-		this.add(getLabelTime(), BorderLayout.EAST);
+		this.add(getButtonIncr(), BorderLayout.EAST);
+		
+		this.add(getButtonDec(), BorderLayout.WEST);
 
 		this.add(getSliderTime(), BorderLayout.SOUTH);
 	}
@@ -71,44 +82,48 @@ public class PanelControl extends JPanel{
 		if(sliderTime == null) {
 			sliderTime = new JSlider();
 			sliderTime.setMinimum(0);
-			sliderTime.setMaximum(100);
+			sliderTime.setMaximum(1000);
 			sliderTime.setValue(0);
-			sliderTime.addMouseListener(new MouseListener() {
-				
-				@Override
-				public void mouseReleased(MouseEvent e) {
-					//TODO il reste un erreur a coriger
-					int value = sliderTime.getValue();
-					long time = value*1000l;
-					MainFrame.get().getPanelVideo().setTime(time);
-					MainFrame.get().getPanelVideo().play();
+			sliderTime.addChangeListener(e -> {
+				if (sliderTime.getValueIsAdjusting()) {
+					long dur = MainFrame.get().getPanelVideo().getTotalTime();
+					if (dur > 0) {
+						System.out.println(sliderTime.getValue());
+						double relPos = sliderTime.getValue() / 1000.0;
+						MainFrame.get().getPanelVideo().setCurrentTime((long) (relPos * dur));
+					} 
 				}
-				
-				@Override
-				public void mousePressed(MouseEvent e) {
-					MainFrame.get().getPanelVideo().pause();
-				}
-				
-				@Override
-				public void mouseExited(MouseEvent e) {}
-				
-				@Override
-				public void mouseEntered(MouseEvent e) {}
-				
-				@Override
-				public void mouseClicked(MouseEvent e) {}
 			});
 		}
 		return sliderTime;
 	}
 	
-	public void setSliderMax(int nbrSeconds) {
-		getSliderTime().setMaximum(nbrSeconds);
-		getSliderTime().setValue(0);
-	}
-	
 	public void setSliderValue(int time) {
-		getSliderTime().setValue(time);
+		if(!getSliderTime().getValueIsAdjusting()) {
+			getSliderTime().setValue(time);
+		}
+	}
+
+	public JButton getButtonIncr() {
+		if(buttonIncr == null) {
+			buttonIncr = new JButton();
+			buttonIncr.setText(">>");
+			buttonIncr.addActionListener(e -> {
+				MainFrame.get().getPanelVideo().incrRate();
+			});
+		}
+		return buttonIncr;
+	}
+
+	public JButton getButtonDec() {
+		if(buttonDec == null) {
+			buttonDec = new JButton();
+			buttonDec.setText("<<");
+			buttonDec.addActionListener(e -> {
+				MainFrame.get().getPanelVideo().decRate();;
+			});
+		}
+		return buttonDec;
 	}
 
 }

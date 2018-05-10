@@ -422,6 +422,10 @@ class SimpleVideoComponent extends javax.swing.JComponent {
             return FlowReturn.OK;
         }
 
+        /*
+         * (non-Javadoc)
+         * @see org.freedesktop.gstreamer.elements.AppSink.NEW_PREROLL#newPreroll(org.freedesktop.gstreamer.elements.AppSink)
+         */
         @Override
         public FlowReturn newPreroll(AppSink elem) {
             Sample sample = elem.pullPreroll();

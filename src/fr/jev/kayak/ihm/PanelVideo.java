@@ -5,12 +5,20 @@ import java.awt.Canvas;
 import java.awt.Color;
 import java.io.File;
 import java.util.Date;
+import java.util.concurrent.TimeUnit;
 
+import javax.swing.JButton;
 import javax.swing.JPanel;
 
+import org.freedesktop.gstreamer.ClockTime;
+import org.freedesktop.gstreamer.Event;
+import org.freedesktop.gstreamer.Format;
 import org.freedesktop.gstreamer.Gst;
-import org.freedesktop.gstreamer.StateChangeReturn;
+import org.freedesktop.gstreamer.SeekFlags;
+import org.freedesktop.gstreamer.SeekType;
 import org.freedesktop.gstreamer.elements.PlayBin;
+import org.freedesktop.gstreamer.event.LatencyEvent;
+import org.freedesktop.gstreamer.event.SeekEvent;
 
 import com.sun.jna.Native;
 import com.sun.jna.NativeLibrary;
@@ -46,6 +54,8 @@ public class PanelVideo extends JPanel {
 	private SimpleVideoComponent simpleVideoComponent;
 
 	private PlayBin playBin;
+
+	private double rate = 1.0;
 
 	/*
 	 * common
@@ -95,7 +105,6 @@ public class PanelVideo extends JPanel {
 			MediaMeta mediaMetaData = embeddedMediaPlayer.getMediaMeta();
 
 			totalTime = mediaMetaData.getLength();
-			MainFrame.get().getPanelControl().setSliderMax((int) (totalTime/1000l));
 		}
 		return embeddedMediaPlayer;
 	}
@@ -123,45 +132,46 @@ public class PanelVideo extends JPanel {
 
 	public void playPause() {
 		if(!isPlay) {
-			if(ConfigurationController.isVlcLib()) {
-				getEmbeddedMediaPlayer().play();
-				isPlay = true;
-				startThreadTime();
-
-			}else if(ConfigurationController.isGstreamerLib()) {
-				StateChangeReturn rep = getPlayBin().play();
-				System.out.println(rep.toString());
-				isPlay = true;
-			}else {
-				System.err.println("[FATAL] no movie liv init.");
-				System.exit(1);
-			}
+			play();
 		}else {
-			if(ConfigurationController.isVlcLib()) {
-				getEmbeddedMediaPlayer().pause();
-				isPlay = false;
-				stopThreadTime();
-			}else if(ConfigurationController.isGstreamerLib()) {
-				StateChangeReturn rep = getPlayBin().pause();
-				System.out.println(rep.toString());
-				isPlay = false;
-			}else {
-				System.err.println("[FATAL] no movie liv init.");
-				System.exit(1);
-			}
+			pause();
 		}
 	}
 
 	public void play() {
-		getEmbeddedMediaPlayer().play();
-		isPlay = true;
 		startThreadTime();
+		if(ConfigurationController.isVlcLib()) {
+			getEmbeddedMediaPlayer().play();
+			isPlay = true;
+
+		}else if(ConfigurationController.isGstreamerLib()) {
+			getPlayBin().setBaseTime(ClockTime.fromMillis(1000));
+			Event evt = new SeekEvent(16.0, Format.DEFAULT,
+					SeekFlags.FLUSH | SeekFlags.ACCURATE,
+					SeekType.SET, 0, SeekType.NONE, 0);
+			getPlayBin().play();
+			getPlayBin().sendEvent(evt);
+			totalTime = getPlayBin().queryDuration(TimeUnit.NANOSECONDS);
+			isPlay = true;
+		}else {
+			System.err.println("[FATAL] no movie liv init.");
+			System.exit(1);
+		}
 	}
 
 	public void pause() {
-		getEmbeddedMediaPlayer().pause();
-		isPlay = false;
 		stopThreadTime();
+		if(ConfigurationController.isVlcLib()) {
+			getEmbeddedMediaPlayer().pause();
+			isPlay = false;
+			stopThreadTime();
+		}else if(ConfigurationController.isGstreamerLib()) {
+			getPlayBin().pause();
+			isPlay = false;
+		}else {
+			System.err.println("[FATAL] no movie liv init.");
+			System.exit(1);
+		}
 	}
 
 	private void startThreadTime() {
@@ -178,7 +188,10 @@ public class PanelVideo extends JPanel {
 						} catch (InterruptedException e) {
 							e.printStackTrace();
 						}
-						long time = getEmbeddedMediaPlayer().getTime();
+						long time = getCurrentTime();
+						totalTime = getPlayBin().queryDuration(TimeUnit.MILLISECONDS);
+						long dur = getPlayBin().queryDuration(TimeUnit.NANOSECONDS);
+						long pos = getPlayBin().queryPosition(TimeUnit.NANOSECONDS);
 						Date dateCurrent = new Date(time);
 						Date dateEnd = new Date(totalTime);
 						String stEnd = String.valueOf(
@@ -190,7 +203,10 @@ public class PanelVideo extends JPanel {
 								+":"+dateCurrent.getSeconds());
 						MainFrame.get().getPanelControl()
 						.getLabelTime().setText(stCurrent+" of "+stEnd);
-						MainFrame.get().getPanelControl().setSliderValue((int)(time/1000l));
+						if (dur > 0) {
+							double relPos = (double) pos / dur;
+							MainFrame.get().getPanelControl().setSliderValue((int) (relPos * 1000));
+						}
 
 					}
 					System.out.println("STOP Thread Time");
@@ -209,10 +225,6 @@ public class PanelVideo extends JPanel {
 		}
 	}
 
-	public void setTime(long time) {
-		this.getEmbeddedMediaPlayer().setTime(time);
-	}
-
 	public void close() {
 		if(this.embeddedMediaPlayer!= null) {
 			pause();
@@ -227,15 +239,67 @@ public class PanelVideo extends JPanel {
 		return simpleVideoComponent;
 	}
 
-	private PlayBin getPlayBin() {
+	public PlayBin getPlayBin() {
 		if(playBin == null) {
 			Gst.init();
 			playBin = new PlayBin("playbin");
 			File file = new File(ConfigurationController.file);
 			playBin.setURI(file.toURI());
 			playBin.setVideoSink(getSimpleVideoComponent().getElement());
+			totalTime = playBin.queryDuration(TimeUnit.MILLISECONDS);
 		}
 		return playBin;
+	}
+
+	public long getCurrentTime() {
+		if(ConfigurationController.isVlcLib()) {
+			return getEmbeddedMediaPlayer().getTime();
+		}else if(ConfigurationController.isGstreamerLib()) {
+			return getPlayBin().queryPosition(TimeUnit.MILLISECONDS);
+		}else {
+			System.err.println("[FATAL] no movie liv init.");
+			System.exit(1);
+		}
+		return -1l;
+	}
+
+	/**
+	 * 
+	 * @param time en ms
+	 */
+	public void setCurrentTime(long time) {
+		stopThreadTime();
+		if(ConfigurationController.isVlcLib()) {
+			this.getEmbeddedMediaPlayer().setTime(time);
+		}else if(ConfigurationController.isGstreamerLib()) {
+			getPlayBin().seek(time, TimeUnit.MILLISECONDS);
+		}else {
+			System.err.println("[FATAL] no movie liv init.");
+			System.exit(1);
+		}
+		startThreadTime();
+	}
+
+	public long getTotalTime() {
+		return this.totalTime;
+	}
+
+	public void incrRate() {
+		rate *=2.0;
+		long pos = getPlayBin().queryPosition(TimeUnit.NANOSECONDS);
+		Event evt = new SeekEvent(rate, Format.TIME,
+				SeekFlags.FLUSH | SeekFlags.ACCURATE,
+				SeekType.SET, pos, SeekType.NONE, 0);
+		getPlayBin().sendEvent(evt);
+	}
+
+	public void decRate() {
+		rate /=2.0;
+		long pos = getPlayBin().queryPosition(TimeUnit.NANOSECONDS);
+		Event evt = new SeekEvent(rate, Format.TIME,
+				SeekFlags.FLUSH | SeekFlags.ACCURATE,
+				SeekType.SET, pos, SeekType.NONE, 0);
+		getPlayBin().sendEvent(evt);
 	}
 
 }
